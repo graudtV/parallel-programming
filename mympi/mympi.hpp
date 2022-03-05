@@ -5,7 +5,6 @@
 namespace mympi {
 
 struct MPIContext {
-  MPIContext() : MPIContext(nullptr, nullptr) {}
   MPIContext(int *argc, char ***argv) { (void)MPI_Init(argc, argv); }
   ~MPIContext() { (void)MPI_Finalize(); }
 };
