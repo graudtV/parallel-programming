@@ -1,0 +1,77 @@
+usage_error() {
+	echo "Usage: run progname nodes ppn [np = nodes*ppn]"
+	echo "Examples:"
+	echo "  run ./prog 7 4"
+	echo "  run ./prog 7 4 28"
+	echo "  run ./prog 7 4 100"
+	exit 1
+}
+
+arrow="\e[32m-->\e[0m"
+
+[ "$#" != 3 -a "$#" != 4 ] && usage_error
+
+export prog_name=$(realpath "$1")
+export job_name="my_insane_job"
+export nodes="$2"
+export ppn="$3"
+
+if [ "$#" == 4 ]; then
+	export np="$4"
+else
+	export np=$(expr "$nodes" '*' "$ppn")
+fi
+
+if ! [ -x "$prog_name" ]; then
+	echo "Error: '$prog_name' is not an executable"
+	exit 1
+fi 
+
+initial_folder=$(pwd)
+# dump_folder=$(mktemp -d "/tmp/$$.dumps.XXXXXX")
+# cd "$dump_folder"
+# mkdir dumps && cd dumps
+
+echo -e "${arrow} Submitting $prog_name with nodes=$nodes, ppn=$ppn, np=$np"
+if ! job_id=$($(dirname "$0")/generate_submission_script.sh | qsub); then
+	echo "Uuupppsss, something went wrong... Failed to submit job"
+	exit 1
+fi
+
+echo -e "${arrow} Created job, id = $job_id"
+echo -e "${arrow} Waiting for job completion..."
+
+while true; do
+	if $(qstat | grep -q "$job_id .* C batch"); then # completed
+		echo -e "${arrow} Job completed!!!"
+		break
+	fi
+	sleep 1
+done;
+
+job_raw_id=$(sed -r 's/^([0-9]+).*/\1/g' <<< "$job_id")
+stdout_filename="${job_name}.o${job_raw_id}"
+stderr_filename="${job_name}.e${job_raw_id}"
+
+if ! [ -e "$stdout_filename" -a -e "$stderr_filename" ]; then
+	echo "Uuupppsss, something went wrong... Cannot find files with stdout and stderr outputs"
+	exit 1
+fi
+
+if [ -s "$stderr_filename" ]; then
+	echo -e "${arrow} Printing stderr contents"
+	cat "$stderr_filename"
+else
+	echo -e "${arrow} stderr is empty"
+fi
+
+if [ -s "$stdout_filename" ]; then
+	echo -e "${arrow} Printing stdout contents"
+	# echo "==================== STDOUT BEGIN ===================="
+	cat "$stdout_filename"
+	# echo "===================== STDOUT END ====================="
+else
+	echo -e "${arrow} stdout is empty"
+fi
+
+rm "$stdout_filename" "$stderr_filename"
