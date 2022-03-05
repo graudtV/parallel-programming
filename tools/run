@@ -1,38 +1,47 @@
 usage_error() {
-	echo "Usage: run progname nodes ppn [np = nodes*ppn]"
+	echo "Usage: run progname nodes ppn [np = nodes*ppn] [ -- arg1 ...]"
 	echo "Examples:"
 	echo "  run ./prog 7 4"
 	echo "  run ./prog 7 4 28"
 	echo "  run ./prog 7 4 100"
+	echo "  run ./prog 7 4 -- 'arguments' 'to pass' 'to' 'your programm'"
 	exit 1
 }
 
 arrow="\e[32m-->\e[0m"
 
-[ "$#" != 3 -a "$#" != 4 ] && usage_error
+[ "$#" -lt 3 ] && usage_error
 
 export prog_name=$(realpath "$1")
 export job_name="my_insane_job"
 export nodes="$2"
 export ppn="$3"
 
-if [ "$#" == 4 ]; then
-	export np="$4"
-else
-	export np=$(expr "$nodes" '*' "$ppn")
-fi
+shift 3
 
 if ! [ -x "$prog_name" ]; then
 	echo "Error: '$prog_name' is not an executable"
 	exit 1
 fi 
 
-initial_folder=$(pwd)
-# dump_folder=$(mktemp -d "/tmp/$$.dumps.XXXXXX")
-# cd "$dump_folder"
-# mkdir dumps && cd dumps
+if [ "$#" -gt 0 -a "$1" != "--" ]; then
+	export np="$1"
+	shift
+else
+	export np=$(expr "$nodes" '*' "$ppn")
+fi
 
-echo -e "${arrow} Submitting $prog_name with nodes=$nodes, ppn=$ppn, np=$np"
+if [ "$1" != "--" ]; then
+	echo "Error: '--' expected before argument list"
+	usage_error
+fi
+shift
+export prog_args="$@"
+
+
+initial_folder=$(pwd)
+
+echo -e "${arrow} Submitting '$prog_name ${prog_args}' with nodes=$nodes, ppn=$ppn, np=$np"
 if ! job_id=$($(dirname "$0")/generate_submission_script.sh | qsub); then
 	echo "Uuupppsss, something went wrong... Failed to submit job"
 	exit 1
@@ -67,9 +76,7 @@ fi
 
 if [ -s "$stdout_filename" ]; then
 	echo -e "${arrow} Printing stdout contents"
-	# echo "==================== STDOUT BEGIN ===================="
 	cat "$stdout_filename"
-	# echo "===================== STDOUT END ====================="
 else
 	echo -e "${arrow} stdout is empty"
 fi
